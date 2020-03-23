@@ -11,14 +11,20 @@ from PIL import Image
 import time
 
 import src.siamese as siam
-from src.visualization import show_frame, show_crops, show_scores
+from src.visualization import show_frame, show_frame_and_write, show_crops, show_scores
 
 
 # gpu_device = 2
 # os.environ['CUDA_VISIBLE_DEVICES'] = '{}'.format(gpu_device)
 
+def convertTuple(tup):
+    strC = ""
+    for elem in tup:
+        strC =  strC + str(elem) + " "
+    return strC
+
 # read default parameters and override with custom ones
-def tracker(hp, run, design, frame_name_list, pos_x, pos_y, target_w, target_h, final_score_sz, filename, image, templates_z, scores, start_frame):
+def tracker(current_sq_name, hp, run, design, frame_name_list, pos_x, pos_y, target_w, target_h, final_score_sz, filename, image, templates_z, templates_x, scores, scores_original, start_frame):
     num_frames = np.size(frame_name_list)
     # stores tracker's output for evaluation
     bboxes = np.zeros((num_frames,4))
@@ -48,7 +54,10 @@ def tracker(hp, run, design, frame_name_list, pos_x, pos_y, target_w, target_h, 
     run_opts = {}
 
     # with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess:
-    with tf.Session() as sess:
+    config = tf.ConfigProto()
+    config.gpu_options.visible_device_list = "1"
+    config.gpu_options.per_process_gpu_memory_fraction = 0.9
+    with tf.Session(config=config) as sess:
         tf.global_variables_initializer().run()
         # Coordinate the loading of image files.
         coord = tf.train.Coordinator()
@@ -72,8 +81,8 @@ def tracker(hp, run, design, frame_name_list, pos_x, pos_y, target_w, target_h, 
             scaled_search_area = x_sz * scale_factors
             scaled_target_w = target_w * scale_factors
             scaled_target_h = target_h * scale_factors
-            image_, scores_ = sess.run(
-                [image, scores],
+            image_, scores_, scores_original_, templates_x_, templates_z_ = sess.run(
+                [image, scores, scores_original, templates_x, templates_z],
                 feed_dict={
                     siam.pos_x_ph: pos_x,
                     siam.pos_y_ph: pos_y,
@@ -84,6 +93,8 @@ def tracker(hp, run, design, frame_name_list, pos_x, pos_y, target_w, target_h, 
                     filename: frame_name_list[i],
                 }, **run_opts)
             scores_ = np.squeeze(scores_)
+            #print some debug information
+            #print("template_x: " + convertTuple(templates_x_.shape) + "scaled_w: " + str(target_w) + " scaled_h: " + str(target_h))
             # penalize change of scale
             scores_[0,:,:] = hp.scale_penalty*scores_[0,:,:]
             scores_[2,:,:] = hp.scale_penalty*scores_[2,:,:]
@@ -117,7 +128,9 @@ def tracker(hp, run, design, frame_name_list, pos_x, pos_y, target_w, target_h, 
             z_sz = (1-hp.scale_lr)*z_sz + hp.scale_lr*scaled_exemplar[new_scale_id]
             
             if run.visualization:
-                show_frame(image_, bboxes[i,:], 1)        
+                show_frame(image_, bboxes[i,:], 1)
+            elif run.vis_and_write:
+                show_frame_and_write(current_sq_name, image_, bboxes[i,:], 1)
 
         t_elapsed = time.time() - t_start
         speed = num_frames/t_elapsed

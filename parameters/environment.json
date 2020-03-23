@@ -1,5 +1,5 @@
 {
-	"root_dataset": "data",
-	"root_pretrained": "pretrained",
+	"root_dataset": "/home/engin/Documents/pysot/testing_dataset/VOT2018",
+	"root_pretrained": "/home/engin/Documents/siamfc-tf/pretrained",
 	"root_parameters": "parameters"
 }

@@ -27,6 +27,23 @@ def _rect(region, center):
         return region
 
 
+def _rect2(region, center):
+    if center:
+        x1 = region[0]
+        y1 = region[1]
+        x2 = region[2]
+        y2 = region[3]
+        x3 = region[4]
+        y3 = region[5]
+        x4 = region[6]
+        y4 = region[7]
+        return cx, cy, w, h
+    else:
+        # region[0] -= 1
+        # region[1] -= 1
+        return region
+
+
 def _poly(region, center):
     cx = np.mean(region[::2])
     cy = np.mean(region[1::2])

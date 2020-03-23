@@ -1,5 +1,6 @@
 {
 	"visualization": 0,
+	"vis_and_write": 0,
 	"debug": 0,
 	"gpus": [1]
 }

@@ -8,6 +8,7 @@ from src.tracker import tracker
 from src.parse_arguments import parse_arguments
 from src.region_to_bbox import region_to_bbox
 
+output_folder = "/home/engin/Documents/siamfc-tf/data/output/"
 
 def main():
     # avoid printing TF debugging information
@@ -21,12 +22,12 @@ def main():
     # [1 4 7] => [1 1 2 3 4 5 6 7 7]  (length 3*3)
     final_score_sz = hp.response_up * (design.score_sz - 1) + 1
     # build TF graph once for all
-    filename, image, templates_z, scores = siam.build_tracking_graph(final_score_sz, design, env)
+    filename, image, templates_z, templates_x, scores, scores_original = siam.build_tracking_graph(final_score_sz, design, env)
 
     # iterate through all videos of evaluation.dataset
     if evaluation.video == 'all':
         dataset_folder = os.path.join(env.root_dataset, evaluation.dataset)
-        videos_list = [v for v in os.listdir(dataset_folder)]
+        videos_list = [v for v in os.listdir(dataset_folder) if os.path.isdir(os.path.join(dataset_folder, v))]
         videos_list.sort()
         nv = np.size(videos_list)
         speed = np.zeros(nv * evaluation.n_subseq)
@@ -35,7 +36,12 @@ def main():
         ious = np.zeros(nv * evaluation.n_subseq)
         lengths = np.zeros(nv * evaluation.n_subseq)
         for i in range(nv):
-            gt, frame_name_list, frame_sz, n_frames = _init_video(env, evaluation, videos_list[i])
+            if run.vis_and_write:
+                #Init output folder
+                output_folder_name = os.path.join(output_folder, videos_list[i])
+                if not os.path.exists(output_folder_name):
+                    os.mkdir(output_folder_name)
+            gt, frame_name_list, frame_sz, n_frames = _init_video(env, evaluation, videos_list[i], 'vot')
             starts = np.rint(np.linspace(0, n_frames - 1, evaluation.n_subseq + 1))
             starts = starts[0:evaluation.n_subseq]
             for j in range(evaluation.n_subseq):
@@ -44,9 +50,9 @@ def main():
                 frame_name_list_ = frame_name_list[start_frame:]
                 pos_x, pos_y, target_w, target_h = region_to_bbox(gt_[0])
                 idx = i * evaluation.n_subseq + j
-                bboxes, speed[idx] = tracker(hp, run, design, frame_name_list_, pos_x, pos_y,
+                bboxes, speed[idx] = tracker(videos_list[i], hp, run, design, frame_name_list_, pos_x, pos_y,
                                                                      target_w, target_h, final_score_sz, filename,
-                                                                     image, templates_z, scores, start_frame)
+                                                                     image, templates_z, templates_x, scores, scores_original, start_frame)
                 lengths[idx], precisions[idx], precisions_auc[idx], ious[idx] = _compile_results(gt_, bboxes, evaluation.dist_threshold)
                 print str(i) + ' -- ' + videos_list[i] + \
                 ' -- Precision: ' + "%.2f" % precisions[idx] + \
@@ -114,10 +120,16 @@ def _compile_results(gt, bboxes, dist_threshold):
     return l, precision, precision_auc, iou
 
 
-def _init_video(env, evaluation, video):
-    video_folder = os.path.join(env.root_dataset, evaluation.dataset, video)
-    frame_name_list = [f for f in os.listdir(video_folder) if f.endswith(".jpg")]
-    frame_name_list = [os.path.join(env.root_dataset, evaluation.dataset, video, '') + s for s in frame_name_list]
+def _init_video(env, evaluation, video, dataset):
+    if dataset == 'vot':
+        video_folder = os.path.join(env.root_dataset, video)
+    else:
+        video_folder = os.path.join(env.root_dataset, evaluation.dataset, video)
+    frame_name_list = [f for f in os.listdir(os.path.join(video_folder, 'color')) if f.endswith(".jpg")]
+    if dataset == 'vot':
+        frame_name_list = [os.path.join(env.root_dataset, video, "color", '') + s for s in frame_name_list]
+    else:
+        frame_name_list = [os.path.join(env.root_dataset, evaluation.dataset, video, '') + s for s in frame_name_list]
     frame_name_list.sort()
     with Image.open(frame_name_list[0]) as img:
         frame_sz = np.asarray(img.size)
