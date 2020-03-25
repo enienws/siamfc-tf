@@ -8,29 +8,39 @@ from src.tracker import tracker
 from src.parse_arguments import parse_arguments
 from src.region_to_bbox import region_to_bbox
 import cv2
-
+from siamfc_tracker import SiamFCTracker
+from colorization_tracker import ColorizationTracker
+import collections
 from toolkit.datasets import DatasetFactory
-
+import vot
 output_folder = "/home/engin/Documents/siamfc-tf/data/output/"
 
 args_dataset = "VOT2018"
 dataset_root = "/home/engin/Documents/pysot/testing_dataset/VOT2018"
 result_output = "/home/engin/Documents/pysot/experiments/siamfc/results/VOT2018/siamfc/baseline"
 visualize = True
+save_vis = True
+vis_output = "/home/engin/Documents/colorization_output"
+
+def get_bbox_rect(region):
+    bbox_tl = (int(region.x), int(region.y))
+    bbox_br = (int(region.x + region.width), int(region.y + region.height))
+    return bbox_tl, bbox_br
+
 
 def main():
     # avoid printing TF debugging information
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
     # TODO: allow parameters from command line or leave everything in json files?
-    hp, evaluation, run, env, design = parse_arguments()
+    # hp, evaluation, run, env, design = parse_arguments()
     # Set size for use with tf.image.resize_images with align_corners=True.
     # For example,
     #   [1 4 7] =>   [1 2 3 4 5 6 7]    (length 3*(3-1)+1)
     # instead of
     # [1 4 7] => [1 1 2 3 4 5 6 7 7]  (length 3*3)
-    final_score_sz = hp.response_up * (design.score_sz - 1) + 1
+    # final_score_sz = hp.response_up * (design.score_sz - 1) + 1
     # build TF graph once for all
-    filename, image, templates_z, templates_x, scores, scores_original = siam.build_tracking_graph(final_score_sz, design, env)
+    # filename, image, templates_z, templates_x, scores, scores_original = siam.build_tracking_graph(final_score_sz, design, env)
 
     # create dataset
     dataset = DatasetFactory.create_dataset(name=args_dataset,
@@ -44,43 +54,49 @@ def main():
     for i in range(nv):
         current_key = sorted(list(dataset.videos.keys()))[i]
         gt, frame_name_list, frame_sz, n_frames = _init_video(dataset, current_key)
-        for j in range(1):
-            start_frame = 0
-            gt_ = gt[start_frame:, :]
-            frame_name_list_ = frame_name_list[start_frame:]
-            pos_x, pos_y, target_w, target_h = region_to_bbox(gt_[0])
-            bboxes, _ = tracker(videos_list[i], hp, run, design, frame_name_list_, pos_x, pos_y,
-                                                                 target_w, target_h, final_score_sz, filename,
-                                                                 image, templates_z, templates_x, scores, scores_original, start_frame)
+        rect = region_to_bbox(gt[0], False)
+        # tracker = SiamFCTracker(frame_name_list[0], vot.Rectangle(rect[0],rect[1],rect[2],rect[3]))
+        tracker = ColorizationTracker(frame_name_list[0], vot.Rectangle(rect[0], rect[1], rect[2], rect[3]))
+        bboxes = []
+        for i in range(0, n_frames):
+            bbox, confidence = tracker.track(frame_name_list[i])
+            bboxes.append(bbox)
 
-            #Visualize
-            if visualize:
-                for bbox, groundt, frame_name in zip(bboxes, gt_, frame_name_list_):
-                    image = cv2.imread(frame_name)
-                    bbox_pt1, bbox_pt2 = get_bbox_cv(bbox)
-                    bbox_gt1, bbox_gt2 = get_gt_bbox_cv(groundt)
+        #Visualize
+        if visualize:
+            for i, (bbox, groundt, frame_name) in enumerate(zip(bboxes, gt, frame_name_list)):
+                image = cv2.imread(frame_name)
+                bbox_pt1, bbox_pt2 = get_bbox_rect(bbox)
+                bbox_gt1, bbox_gt2 = get_gt_bbox_cv(groundt)
 
-                    #Draw result
-                    cv2.rectangle(image, bbox_pt1, bbox_pt2, (0,255,0))
-                    #Draw ground truth
-                    cv2.rectangle(image, bbox_gt1, bbox_gt2, (0,0,0))
-                    cv2.imshow("Results:", image)
-                    cv2.waitKey()
+                #Draw result
+                cv2.rectangle(image, bbox_pt1, bbox_pt2, (0,255,0))
+                #Draw ground truth
+                cv2.rectangle(image, bbox_gt1, bbox_gt2, (0,0,0))
+                cv2.imshow("Results:", image)
+                if save_vis:
+                    cv2.imwrite(os.path.join(vis_output, str(i) + ".jpg"), image)
+                cv2.waitKey()
 
+        #Reset the tracker, get prepared for next subset
+        tracker.reset()
 
-            bboxes = bboxes.tolist()
-            bboxes[0] = [1]
-            target_dir = os.path.join(result_output, current_key)
-            if not os.path.exists(target_dir):
-                os.mkdir(target_dir)
-            results_file = current_key + "_" + "{:03d}".format(1) + ".txt"
-            results_abs_file = os.path.join(target_dir, results_file)
-            with open(results_abs_file, "w") as f:
-                for bbox in bboxes:
-                    if len(bbox) == 1:
-                        f.write('%d\n' % (bbox[0]))
-                    else:
-                        f.write('%.2f, %.2f, %.2f, %.2f\n' % (bbox[0], bbox[1], bbox[2], bbox[3]))
+        # Write the results to disc for evaluation
+        # bboxes_n = []
+        # for bbox in bboxes:
+        #     bboxes_n.append([bbox.x, bbox.y, bbox.width, bbox.height])
+        # bboxes_n[0] = [1]
+        # target_dir = os.path.join(result_output, current_key)
+        # if not os.path.exists(target_dir):
+        #     os.mkdir(target_dir)
+        # results_file = current_key + "_" + "{:03d}".format(1) + ".txt"
+        # results_abs_file = os.path.join(target_dir, results_file)
+        # with open(results_abs_file, "w") as f:
+        #     for bbox in bboxes_n:
+        #         if len(bbox) == 1:
+        #             f.write('%d\n' % (bbox[0]))
+        #         else:
+        #             f.write('%.2f, %.2f, %.2f, %.2f\n' % (bbox[0], bbox[1], bbox[2], bbox[3]))
 
 
 def _init_video(dataset, current_key):
@@ -100,6 +116,7 @@ def get_bbox_cv(bbox):
 def get_gt_bbox_cv(bbox):
     x, y, width, height = region_to_bbox(bbox, False)
     return (int(x), int(y)), (int(x + width), int(y + height))
+
 
 
 def region_to_bbox(region, center=True):
