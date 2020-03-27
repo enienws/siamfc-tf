@@ -4,9 +4,11 @@ import cv2
 import numpy as np
 import vot
 from src.parse_arguments import parse_arguments
+from PIL import Image
 
 class ColorizationTracker:
     def __init__(self, imagepath, region):
+        self.track_count = 0
         #Parameters
         self.exemplar_sz = 128
         self.search_sz = 256
@@ -19,7 +21,7 @@ class ColorizationTracker:
         self.pos_y = region.y + region.height / 2
         self.target_w = region.width
         self.target_h = region.height
-        self.bbox = self.pos_x - self.target_w/2, self.pos_y - self.target_h/2, self.target_w, self.target_h
+
 
         #Calculate the size of final score (upscaled size of score matrix, where score matrix
         # is convolution of results of two branches of siamese network)
@@ -40,7 +42,7 @@ class ColorizationTracker:
         self.x_sz = float(self.design.search_sz) / self.design.exemplar_sz * self.z_sz
 
         #Initialize the network
-        self.features_x, self.features_z, self.scores = self.InitNetwork()
+        self.features_x, self.features_z, self.scores, self.z_crops, self.x_crops = self.InitNetwork()
 
         latest_checkpoint = "/media/engin/63c43c7a-cb63-4c43-b70c-f3cb4d68762a/models/wbaek_colorization/model1_18022020/model.ckpt-56000"
 
@@ -71,12 +73,16 @@ class ColorizationTracker:
         #Calculate the score for template
         # Run the template session
         with self.graph_exemplar.as_default():
-            self.templates_z_ = self.session_exemplar.run(self.features_z, feed_dict={
+            self.templates_z_, z_crops_ = self.session_exemplar.run([self.features_z, self.z_crops], feed_dict={
                 self.exemplar_ph['filename_ph']: imagepath,
                 self.exemplar_ph['pos_x_ph']: self.pos_x,
                 self.exemplar_ph['pos_y_ph']: self.pos_y,
                 self.exemplar_ph['z_sz_ph']: self.z_sz
             })
+
+        #Write the template image
+        z_crops_image = Image.fromarray(np.reshape(z_crops_, (128, 128)).astype(np.uint8))
+        z_crops_image.save("/home/engin/Documents/output/template.jpg")
 
         return
 
@@ -94,7 +100,7 @@ class ColorizationTracker:
 
         #Run the search session
         with self.graph_search.as_default():
-            features_x_result = self.session_search.run(self.features_x, feed_dict={
+            features_x_result, x_crops_ = self.session_search.run([self.features_x, self.x_crops], feed_dict={
                 self.search_ph['filename_ph']: imagepath,
                 self.search_ph['pos_x_ph']: self.pos_x,
                 self.search_ph['pos_y_ph']: self.pos_y,
@@ -103,6 +109,14 @@ class ColorizationTracker:
                 self.search_ph['x_sz2_ph']: scaled_search_area[2],
             })
 
+            #Write the images
+            x_crops_ = np.reshape(x_crops_, (3,256, 256, 1)).astype(np.uint8)
+            x_crops_image_0 = Image.fromarray(np.reshape(x_crops_[0], (256,256)))
+            x_crops_image_1 = Image.fromarray(np.reshape(x_crops_[1], (256,256)))
+            x_crops_image_2 = Image.fromarray(np.reshape(x_crops_[2], (256, 256)))
+            x_crops_image_0.save("/home/engin/Documents/output/x_{}_0.jpg".format(self.track_count))
+            x_crops_image_1.save("/home/engin/Documents/output/x_{}_1.jpg".format(self.track_count))
+            x_crops_image_2.save("/home/engin/Documents/output/x_{}_2.jpg".format(self.track_count))
 
 
         # Run the matching session
@@ -137,18 +151,24 @@ class ColorizationTracker:
         # update the target representation with a rolling average
         if self.hp.z_lr > 0:
             with self.graph_exemplar.as_default():
-                new_templates_z_ = self.session_exemplar.run(self.features_z, feed_dict={
+                new_templates_z_, z_crops_ = self.session_exemplar.run([self.features_z, self.z_crops], feed_dict={
                     self.exemplar_ph['filename_ph']: imagepath,
                     self.exemplar_ph['pos_x_ph']: self.pos_x,
                     self.exemplar_ph['pos_y_ph']: self.pos_y,
                     self.exemplar_ph['z_sz_ph']: self.z_sz
                 })
 
+                # Write the template image
+                Image.fromarray(np.reshape(z_crops_, (128, 128)).astype(np.uint8)).save("/home/engin/Documents/output/z_{}.jpg".format(self.track_count))
+
             self.templates_z_ = (1 - self.hp.z_lr) * np.asarray(self.templates_z_) + self.hp.z_lr * np.asarray(
                 new_templates_z_)
 
         # update template patch size
         self.z_sz = (1 - self.hp.scale_lr) * self.z_sz + self.hp.scale_lr * scaled_exemplar[new_scale_id]
+
+        #Increment tracker count
+        self.track_count = self.track_count + 1
 
         # convert <cx,cy,w,h> to <x,y,w,h> and save output
         return vot.Rectangle(self.pos_x - self.target_w / 2, self.pos_y - self.target_h / 2, self.target_w,
@@ -354,4 +374,4 @@ class ColorizationTracker:
                                                method=tf.image.ResizeMethod.BICUBIC, align_corners=True)
 
 
-        return features_x, features_z, scores_up
+        return features_x, features_z, scores_up, z_crops, x_crops

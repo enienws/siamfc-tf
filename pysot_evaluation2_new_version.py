@@ -17,8 +17,9 @@ output_folder = "/home/engin/Documents/siamfc-tf/data/output/"
 
 args_dataset = "VOT2018"
 dataset_root = "/home/engin/Documents/pysot/testing_dataset/VOT2018"
-result_output = "/home/engin/Documents/pysot/experiments/siamfc/results/VOT2018/siamfc/baseline"
-visualize = True
+# result_output = "/home/engin/Documents/pysot/experiments/siamfc/results/VOT2018/siamfc/baseline"
+result_output = "/home/engin/Documents/pysot/experiments/siamcolor/results/VOT2018/siamcolor/baseline"
+visualize = False
 save_vis = True
 vis_output = "/home/engin/Documents/colorization_output"
 
@@ -82,21 +83,21 @@ def main():
         tracker.reset()
 
         # Write the results to disc for evaluation
-        # bboxes_n = []
-        # for bbox in bboxes:
-        #     bboxes_n.append([bbox.x, bbox.y, bbox.width, bbox.height])
-        # bboxes_n[0] = [1]
-        # target_dir = os.path.join(result_output, current_key)
-        # if not os.path.exists(target_dir):
-        #     os.mkdir(target_dir)
-        # results_file = current_key + "_" + "{:03d}".format(1) + ".txt"
-        # results_abs_file = os.path.join(target_dir, results_file)
-        # with open(results_abs_file, "w") as f:
-        #     for bbox in bboxes_n:
-        #         if len(bbox) == 1:
-        #             f.write('%d\n' % (bbox[0]))
-        #         else:
-        #             f.write('%.2f, %.2f, %.2f, %.2f\n' % (bbox[0], bbox[1], bbox[2], bbox[3]))
+        bboxes_n = []
+        for bbox in bboxes:
+            bboxes_n.append([bbox.x, bbox.y, bbox.width, bbox.height])
+        bboxes_n[0] = [1]
+        target_dir = os.path.join(result_output, current_key)
+        if not os.path.exists(target_dir):
+            os.mkdir(target_dir)
+        results_file = current_key + "_" + "{:03d}".format(1) + ".txt"
+        results_abs_file = os.path.join(target_dir, results_file)
+        with open(results_abs_file, "w") as f:
+            for bbox in bboxes_n:
+                if len(bbox) == 1:
+                    f.write('%d\n' % (bbox[0]))
+                else:
+                    f.write('%.2f, %.2f, %.2f, %.2f\n' % (bbox[0], bbox[1], bbox[2], bbox[3]))
 
 
 def _init_video(dataset, current_key):

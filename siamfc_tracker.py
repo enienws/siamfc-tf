@@ -7,7 +7,7 @@ import vot
 class SiamFCTracker:
     def __init__(self, image_path, region):
         #Parse the arguments
-        self.hp, self.evaluation, self.run, self.env, self.design = parse_arguments()
+        self.hp, self.evaluation, self.run, self.env, self.design = parse_arguments(mode='siamese')
 
         #Get first frame image and ground-truth
         self.region = region
