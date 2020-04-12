@@ -10,6 +10,7 @@ from src.region_to_bbox import region_to_bbox
 import cv2
 from siamfc_tracker import SiamFCTracker
 from colorization_tracker import ColorizationTracker
+from hybrid_tracker import HybridTracker
 import collections
 from toolkit.datasets import DatasetFactory
 import vot
@@ -18,7 +19,8 @@ output_folder = "/home/engin/Documents/siamfc-tf/data/output/"
 args_dataset = "VOT2018"
 dataset_root = "/home/engin/Documents/pysot/testing_dataset/VOT2018"
 # result_output = "/home/engin/Documents/pysot/experiments/siamfc/results/VOT2018/siamfc/baseline"
-result_output = "/home/engin/Documents/pysot/experiments/siamcolor/results/VOT2018/siamcolor/baseline"
+# result_output = "/home/engin/Documents/pysot/experiments/siamcolor/results/VOT2018/siamcolor/baseline"
+result_output = "/home/engin/Documents/pysot/experiments/siamhybrid/results/VOT2018/alpha_09/baseline"
 visualize = False
 save_vis = True
 vis_output = "/home/engin/Documents/colorization_output"
@@ -52,12 +54,17 @@ def main():
     videos_list = list(dataset.videos.keys())
     videos_list.sort()
     nv = np.size(videos_list)
+    tracker = None
     for i in range(nv):
         current_key = sorted(list(dataset.videos.keys()))[i]
         gt, frame_name_list, frame_sz, n_frames = _init_video(dataset, current_key)
         rect = region_to_bbox(gt[0], False)
         # tracker = SiamFCTracker(frame_name_list[0], vot.Rectangle(rect[0],rect[1],rect[2],rect[3]))
-        tracker = ColorizationTracker(frame_name_list[0], vot.Rectangle(rect[0], rect[1], rect[2], rect[3]))
+        # tracker = ColorizationTracker(frame_name_list[0], vot.Rectangle(rect[0], rect[1], rect[2], rect[3]))
+        if tracker is None:
+            tracker = HybridTracker(frame_name_list[0], vot.Rectangle(rect[0], rect[1], rect[2], rect[3]))
+        else:
+            tracker.HotInit(frame_name_list[0], vot.Rectangle(rect[0], rect[1], rect[2], rect[3]))
         bboxes = []
         for i in range(0, n_frames):
             bbox, confidence = tracker.track(frame_name_list[i])
